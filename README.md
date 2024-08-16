@@ -67,6 +67,8 @@ processes:
           output_dir: "./blurred_faces"
         conditions:
           - is_image
+
+
   face_similarity:
     rules:
       - name: is_image
