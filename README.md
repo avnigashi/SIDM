@@ -67,6 +67,37 @@ processes:
           output_dir: "./blurred_faces"
         conditions:
           - is_image
+  face_similarity:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+      - name: similarity_check
+        file: similarity_rule.py
+        params:
+          threshold: 0.6
+          model_name: "VGG-Face"
+          distance_metric: "cosine"
+          reference_img_path: "./dua_lipa/Baidu_0000.png"
+    actions:
+      - name: copy_similar_faces
+        file: copy_file.py
+        params:
+          output_dir: "./similar_faces"
+        conditions:
+          - is_image
+          - similarity_check
+      - name: add_watermark
+        file: add_watermark.py
+        params:
+          watermark_text: "Similar Face"
+        conditions:
+          - is_image
+          - similarity_check
 ```
 
 ## Usage
