@@ -9,7 +9,6 @@ global_log = []
 def log_message(message: str):
     global_log.append(message)
 
-
 class Plugin(ABC):
     @abstractmethod
     def initialize(self, config: Dict[str, Any]) -> None:
@@ -70,10 +69,8 @@ class Process:
 class ImageProcessor:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.processes: Dict[str, Process] = {}
+        self.process: Process = None
         self.logger = self._setup_logger()
-        self.stop_on_error = self.config['general'].get('stop_on_error', False)
-        self._should_stop = False
 
     def _setup_logger(self):
         logger = logging.getLogger('ImageProcessor')
@@ -84,70 +81,52 @@ class ImageProcessor:
         logger.addHandler(handler)
         return logger
 
-    def _resolve_references(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        resolved_params = {}
-        for key, value in params.items():
-            if isinstance(value, str) and value == "GENERAL_OUTPUT_DIR":
-                resolved_params[key] = self.config['general']['output_dir']
-            else:
-                resolved_params[key] = value
-        return resolved_params
+    def load_plugins(self, process_name: str):
+        if process_name not in self.config['processes']:
+            raise ValueError(f"Process '{process_name}' not found in configuration")
 
-    def load_plugins(self):
+        process_config = self.config['processes'][process_name]
         plugin_dir = self.config['general']['plugins_dir']
-        for process_name, process_config in self.config['processes'].items():
-            rules = []
-            actions = []
-            for rule_config in process_config['rules']:
-                rule_path = os.path.join(plugin_dir, 'rules', rule_config['file'])
-                rule = PluginLoader.load_plugin(rule_path, Rule)
-                resolved_params = self._resolve_references(rule_config.get('params', {}))
-                rule.initialize(resolved_params)
-                rules.append({'instance': rule, 'config': rule_config})
 
-            for action_config in process_config['actions']:
-                action_path = os.path.join(plugin_dir, 'actions', action_config['file'])
-                action = PluginLoader.load_plugin(action_path, Action)
-                resolved_params = self._resolve_references(action_config.get('params', {}))
-                action.initialize(resolved_params)
-                actions.append({'instance': action, 'config': action_config})
+        rules = []
+        actions = []
 
-            self.processes[process_name] = Process(process_name, rules, actions)
+        for rule_config in process_config['rules']:
+            rule_path = os.path.join(plugin_dir, 'rules', rule_config['file'])
+            rule = PluginLoader.load_plugin(rule_path, Rule)
+            rule.initialize(rule_config.get('params', {}))
+            rules.append({'instance': rule, 'config': rule_config})
 
-    def process_images(self, source_dir: str, process_name: str):
-        if process_name not in self.processes:
-            log_message(f"Error: Process '{process_name}' not found.")
-            return
+        for action_config in process_config['actions']:
+            action_path = os.path.join(plugin_dir, 'actions', action_config['file'])
+            action = PluginLoader.load_plugin(action_path, Action)
+            action.initialize(action_config.get('params', {}))
+            actions.append({'instance': action, 'config': action_config})
 
-        process = self.processes[process_name]
-        log_message(f"Running process: {process_name}")
+        self.process = Process(process_name, rules, actions)
+        log_message(f"Loaded process: {process_name}")
+
+    def process_images(self, source_dir: str):
+        if not self.process:
+            raise ValueError("No process loaded. Call load_plugins() first.")
 
         for root, _, files in os.walk(source_dir):
             for filename in files:
-                if self._should_stop:
-                    log_message("Processing stopped due to an error.")
-                    return
-
                 filepath = os.path.join(root, filename)
                 try:
                     metadata = self._get_metadata(filepath)
-                    rule_results = process.apply(filepath, metadata)
+                    rule_results = self.process.apply(filepath, metadata)
                     if any(rule_results.values()):
-                        filepath = process.execute(filepath, metadata, rule_results)
-                        self.logger.info(f"Applied process '{process_name}' to {filepath}")
-                        log_message(f"Applied process '{process_name}' to {filepath}")
+                        filepath = self.process.execute(filepath, metadata, rule_results)
+                        self.logger.info(f"Applied process '{self.process.name}' to {filepath}")
+                        log_message(f"Applied process '{self.process.name}' to {filepath}")
                     else:
-                        log_message(f"Skipped process '{process_name}' for {filepath}")
+                        log_message(f"Skipped process '{self.process.name}' for {filepath}")
                 except Exception as e:
-                    error_message = f"Error processing {filepath}: {str(e)}"
-                    self.logger.error(error_message)
-                    log_message(error_message)
-                    if self.stop_on_error:
-                        self._should_stop = True
-                        log_message("Stopping process due to error.")
-                        return
-                    else:
-                        log_message("Continuing to next image...")
+                    self.logger.error(f"Error processing {filepath}: {str(e)}")
+                    log_message(f"Error processing {filepath}: {str(e)}")
+                    if self.config['general']['stop_on_error']:
+                        raise
 
             if not self.config['general']['recursive']:
                 break

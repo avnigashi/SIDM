@@ -151,7 +151,7 @@ processes:
           detector_backend: "retinaface"
           enforce_detection: true
           align: true
-          target_size: [224, 224]
+          target_size: [512, 512]
         conditions:
           - is_image
 
@@ -260,5 +260,68 @@ processes:
           detector_backend: "retinaface"
           blur_factor: 31
           output_dir: "./blurred_faces"
+        conditions:
+          - is_image
+
+  format_conversion:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+            - ".webp"
+            - ".gif"
+    actions:
+      - name: convert_format
+        file: convert_format_action.py
+        params:
+          output_format: "PNG"
+          output_dir: "./converted_images"
+          quality: 95
+        conditions:
+          - is_image
+
+  Dua_lipa:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+    actions:
+      - name: crop_faces
+        file: crop_faces_action.py
+        params:
+          output_dir: "./cropped_faces"
+          detector_backend: "retinaface"
+          padding_factor: 0.5
+          max_size: 1024
+        conditions:
+          - is_image
+
+
+  find_duplicates:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+            - ".webp"
+            - ".gif"
+    actions:
+      - name: find_duplicate_images
+        file: find_duplicate_images_action.py
+        params:
+          output_dir: "GENERAL_OUTPUT_DIR/duplicate_images"
+          hash_size: 8
+          similarity_threshold: 5
         conditions:
           - is_image

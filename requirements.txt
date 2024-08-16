@@ -3,3 +3,4 @@ PyYAML
 opencv-python
 numpy
 deepface
+imagehash

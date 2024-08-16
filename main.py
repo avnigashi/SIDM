@@ -4,9 +4,7 @@ from image_processor import ImageProcessor, log_message
 
 def load_config(config_file):
     with open(config_file, 'r') as f:
-        config = yaml.safe_load(f)
-    log_message(f"Configuration loaded from {config_file}")
-    return config
+        return yaml.safe_load(f)
 
 def main():
     parser = argparse.ArgumentParser(description="Smart Image Dataset Manager")
@@ -23,22 +21,15 @@ def main():
 
     config = load_config(args.config)
 
-    # Override the stop_on_error setting from command line if provided
     if args.stop_on_error:
         config['general']['stop_on_error'] = True
-        log_message("logging enabled")
-
-    if args.process not in config['processes']:
-        print(f"Error: Process '{args.process}' not found in configuration.")
-        return
 
     processor = ImageProcessor(config)
-    processor.load_plugins()
-    processor.process_images(args.source_dir, args.process)
+    processor.load_plugins(args.process)
+    processor.process_images(args.source_dir)
 
     log_message("Image processing completed")
 
-    # Print the log
     print("\nProcessing Log:")
     for log_entry in processor.get_log():
         print(log_entry)
