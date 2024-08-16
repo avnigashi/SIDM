@@ -84,7 +84,7 @@ processes:
           threshold: 0.6
           model_name: "VGG-Face"
           distance_metric: "cosine"
-          reference_img_path: "./dua_lipa/Baidu_0000.png"
+          reference_img_path: "./file/imagefile.png"
     actions:
       - name: copy_similar_faces
         file: copy_file.py
