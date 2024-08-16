@@ -1,0 +1,264 @@
+general:
+  output_dir: "./processed_dataset"
+  log_level: "INFO"
+  plugins_dir: "./plugins"
+  recursive: true
+  stop_on_error: true
+
+processes:
+  image_processing:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+      - name: is_large_file
+        file: check_file_size.py
+        params:
+          max_size: 5242880
+      - name: has_minimum_dimensions
+        file: check_dimensions.py
+        params:
+          min_width: 800
+          min_height: 600
+    actions:
+      - name: copy_file
+        file: copy_file.py
+        params:
+          output_dir: "./processed"
+        conditions:
+          - is_image
+          - is_large_file
+          - has_minimum_dimensions
+      - name: resize_image
+        file: resize_image.py
+        params:
+          max_width: 1920
+          max_height: 1080
+        conditions:
+          - is_image
+          - is_large_file
+          - has_minimum_dimensions
+
+  ollama:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+      - name: ai_face_validation
+        file: ai_face_validation.py
+        params:
+          api_url: 'http://localhost:11434/api/generate'
+          model: 'llava:latest'
+          temperature: 0.1
+          max_tokens: 300
+          top_p: 1
+          frequency_penalty: 0
+          presence_penalty: 0
+          prompt: "Validate if this image contains a female face where the face is portait like to see. Respond with only 'yes' or 'no' but then explain."
+    actions:
+      - name: copy_file
+        file: copy_file.py
+        params:
+          output_dir: "./ollama"
+        conditions:
+          - is_image
+          - ai_face_validation
+
+  blond:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+      - name: ai_face_validation
+        file: ai_face_validation.py
+        params:
+          api_url: 'http://localhost:11434/api/generate'
+          model: 'llava-llama3'
+          temperature: 0.1
+          max_tokens: 300
+          top_p: 1
+          frequency_penalty: 0
+          presence_penalty: 0
+          prompt: "Is this person blond? Respond with only 'yes' or 'no' but then explain."
+    actions:
+      - name: copy_file
+        file: copy_file.py
+        params:
+          output_dir: "./blond"
+        conditions:
+          - is_image
+          - ai_face_validation
+
+
+  face_similarity:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+      - name: similarity_check
+        file: similarity_rule.py
+        params:
+          threshold: 0.6
+          model_name: "VGG-Face"
+          distance_metric: "cosine"
+          reference_img_path: "./dua_lipa/Baidu_0000.png"
+    actions:
+      - name: copy_similar_faces
+        file: copy_file.py
+        params:
+          output_dir: "./similar_faces"
+        conditions:
+          - is_image
+          - similarity_check
+      - name: add_watermark
+        file: add_watermark.py
+        params:
+          watermark_text: "Similar Face"
+        conditions:
+          - is_image
+          - similarity_check
+
+  face_extraction:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+    actions:
+      - name: crop_faces
+        file: crop_faces_action.py
+        params:
+          output_dir: "./cropped_faces"
+          detector_backend: "retinaface"
+          enforce_detection: true
+          align: true
+          target_size: [224, 224]
+        conditions:
+          - is_image
+
+  face_attribute_filtering:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+      - name: age_check
+        file: age_rule.py
+        params:
+          age_range: [18, 30]
+          detector_backend: "retinaface"
+      - name: gender_check
+        file: gender_rule.py
+        params:
+          gender: "Female"
+          detector_backend: "retinaface"
+      - name: race_check
+        file: race_rule.py
+        params:
+          race: "white"
+          detector_backend: "retinaface"
+      - name: emotion_check
+        file: emotion_rule.py
+        params:
+          emotion: "happy"
+          detector_backend: "retinaface"
+    actions:
+      - name: copy_matching_faces
+        file: copy_file.py
+        params:
+          output_dir: "./matching_faces"
+        conditions:
+          - is_image
+          - age_check
+          - gender_check
+          - race_check
+          - emotion_check
+
+  anti_spoofing_filtering:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+      - name: spoofing_check
+        file: spoofing_rule.py
+        params:
+          detector_backend: "retinaface"
+          negate: false
+          model_name: "FaceNet512"
+    actions:
+      - name: copy_real_faces
+        file: copy_file.py
+        params:
+          output_dir: "./real_faces"
+        conditions:
+          - is_image
+          - spoofing_check
+
+  spoof_detection:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+      - name: spoofing_check
+        file: spoofing_rule.py
+        params:
+          detector_backend: "retinaface"
+          negate: true
+          model_name: "FaceNet512"
+    actions:
+      - name: copy_potential_spoofs
+        file: copy_file.py
+        params:
+          output_dir: "./potential_spoofs"
+        conditions:
+          - is_image
+          - spoofing_check
+
+  face_blurring:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+    actions:
+      - name: detect_and_blur_faces
+        file: detect_and_blur_faces.py
+        params:
+          detector_backend: "retinaface"
+          blur_factor: 31
+          output_dir: "./blurred_faces"
+        conditions:
+          - is_image
