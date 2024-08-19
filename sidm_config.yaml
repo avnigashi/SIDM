@@ -117,7 +117,7 @@ processes:
           threshold: 0.6
           model_name: "VGG-Face"
           distance_metric: "cosine"
-          reference_img_path: "./dua_lipa/Baidu_0000.png"
+          reference_img_path: "./ref_img.png"
     actions:
       - name: copy_similar_faces
         file: copy_file.py
@@ -284,7 +284,7 @@ processes:
         conditions:
           - is_image
 
-  Dua_lipa:
+  crop_faces:
     rules:
       - name: is_image
         file: is_image.py
@@ -299,8 +299,8 @@ processes:
         params:
           output_dir: "./cropped_faces"
           detector_backend: "retinaface"
-          padding_factor: 0.5
-          max_size: 1024
+          padding_factor: 0.3
+          max_size: 2048
         conditions:
           - is_image
 
@@ -320,8 +320,79 @@ processes:
       - name: find_duplicate_images
         file: find_duplicate_images_action.py
         params:
-          output_dir: "GENERAL_OUTPUT_DIR/duplicate_images"
+          output_dir: "./duplicate_images"
           hash_size: 8
           similarity_threshold: 5
         conditions:
           - is_image
+
+  remove_small_images:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+      - name: is_small_image
+        file: is_small_image.py
+        params:
+          min_width: 400
+          min_height: 400
+    actions:
+      - name: remove_file
+        file: remove_action.py
+        params:
+          dry_run: false  # Set to false when you're ready to actually delete files
+          log_dir: "./removal_logs"
+        conditions:
+          - is_image
+          - is_small_image
+
+  find_and_remove_duplicates:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+    actions:
+      - name: find_and_remove_duplicates
+        file: find_and_remove_duplicates_action.py
+        params:
+          hash_size: 8
+          similarity_threshold: 5
+          dry_run: false  # Set to false when you're ready to actually delete files
+        conditions:
+          - is_image
+  remove_unsimilar_faces:
+    rules:
+      - name: is_image
+        file: is_image.py
+        params:
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+      - name: similarity_check
+        file: similarity_rule.py
+        params:
+          negate: true
+          threshold: 0.7
+          model_name: "VGG-Face"
+          distance_metric: "cosine"
+          reference_img_path: "./ref_image.jpeg"
+    actions:
+      - name: remove_file
+        file: remove_action.py
+        params:
+          dry_run: false  # Set to false when you're ready to actually delete files
+          log_dir: "./removal_logs"
+        conditions:
+          - is_image
+          - similarity_check
+
+
