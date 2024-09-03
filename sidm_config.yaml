@@ -6,393 +6,161 @@ general:
   stop_on_error: true
 
 processes:
-  image_processing:
+  move_images:
     rules:
-      - name: is_image
-        file: is_image.py
+      - name: vision_language_rule
+        plugin: moondream2/vision_language_rule
         params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-      - name: is_large_file
-        file: check_file_size.py
+          model_id: "vikhyatk/moondream2"
+          revision: "2024-05-20"
+          question: "What is the color of the object?"
+          expected_answer: "red"
+      - name: similarity_rule
+        plugin: deepfakePlugin/similarity_rule
         params:
-          max_size: 5242880
-      - name: has_minimum_dimensions
-        file: check_dimensions.py
-        params:
-          min_width: 800
-          min_height: 600
-    actions:
-      - name: copy_file
-        file: copy_file.py
-        params:
-          output_dir: "./processed"
-        conditions:
-          - is_image
-          - is_large_file
-          - has_minimum_dimensions
-      - name: resize_image
-        file: resize_image.py
-        params:
-          max_width: 1920
-          max_height: 1080
-        conditions:
-          - is_image
-          - is_large_file
-          - has_minimum_dimensions
-
-  ollama:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-      - name: ai_face_validation
-        file: ai_face_validation.py
-        params:
-          api_url: 'http://localhost:11434/api/generate'
-          model: 'llava:latest'
-          temperature: 0.1
-          max_tokens: 300
-          top_p: 1
-          frequency_penalty: 0
-          presence_penalty: 0
-          prompt: "Validate if this image contains a female face where the face is portait like to see. Respond with only 'yes' or 'no' but then explain."
-    actions:
-      - name: copy_file
-        file: copy_file.py
-        params:
-          output_dir: "./ollama"
-        conditions:
-          - is_image
-          - ai_face_validation
-
-  blond:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-      - name: ai_face_validation
-        file: ai_face_validation.py
-        params:
-          api_url: 'http://localhost:11434/api/generate'
-          model: 'llava-llama3'
-          temperature: 0.1
-          max_tokens: 300
-          top_p: 1
-          frequency_penalty: 0
-          presence_penalty: 0
-          prompt: "Is this person blond? Respond with only 'yes' or 'no' but then explain."
-    actions:
-      - name: copy_file
-        file: copy_file.py
-        params:
-          output_dir: "./blond"
-        conditions:
-          - is_image
-          - ai_face_validation
-
-
-  face_similarity:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-      - name: similarity_check
-        file: similarity_rule.py
-        params:
-          threshold: 0.6
-          model_name: "VGG-Face"
-          distance_metric: "cosine"
-          reference_img_path: "./ref_img.png"
-    actions:
-      - name: copy_similar_faces
-        file: copy_file.py
-        params:
-          output_dir: "./similar_faces"
-        conditions:
-          - is_image
-          - similarity_check
-      - name: add_watermark
-        file: add_watermark.py
-        params:
-          watermark_text: "Similar Face"
-        conditions:
-          - is_image
-          - similarity_check
-
-  face_extraction:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-    actions:
-      - name: crop_faces
-        file: crop_faces_action.py
-        params:
-          output_dir: "./cropped_faces"
-          detector_backend: "retinaface"
-          enforce_detection: true
-          align: true
-          target_size: [512, 512]
-        conditions:
-          - is_image
-
-  face_attribute_filtering:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-      - name: age_check
-        file: age_rule.py
-        params:
-          age_range: [18, 30]
-          detector_backend: "retinaface"
-      - name: gender_check
-        file: gender_rule.py
-        params:
-          gender: "Female"
-          detector_backend: "retinaface"
-      - name: race_check
-        file: race_rule.py
-        params:
-          race: "white"
-          detector_backend: "retinaface"
-      - name: emotion_check
-        file: emotion_rule.py
-        params:
-          emotion: "happy"
-          detector_backend: "retinaface"
-    actions:
-      - name: copy_matching_faces
-        file: copy_file.py
-        params:
-          output_dir: "./matching_faces"
-        conditions:
-          - is_image
-          - age_check
-          - gender_check
-          - race_check
-          - emotion_check
-
-  anti_spoofing_filtering:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-      - name: spoofing_check
-        file: spoofing_rule.py
-        params:
-          detector_backend: "retinaface"
-          negate: false
-          model_name: "FaceNet512"
-    actions:
-      - name: copy_real_faces
-        file: copy_file.py
-        params:
-          output_dir: "./real_faces"
-        conditions:
-          - is_image
-          - spoofing_check
-
-  spoof_detection:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-      - name: spoofing_check
-        file: spoofing_rule.py
-        params:
-          detector_backend: "retinaface"
-          negate: true
-          model_name: "FaceNet512"
-    actions:
-      - name: copy_potential_spoofs
-        file: copy_file.py
-        params:
-          output_dir: "./potential_spoofs"
-        conditions:
-          - is_image
-          - spoofing_check
-
-  face_blurring:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-    actions:
-      - name: detect_and_blur_faces
-        file: detect_and_blur_faces.py
-        params:
-          detector_backend: "retinaface"
-          blur_factor: 31
-          output_dir: "./blurred_faces"
-        conditions:
-          - is_image
-
-  format_conversion:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-            - ".webp"
-            - ".gif"
-    actions:
-      - name: convert_format
-        file: convert_format_action.py
-        params:
-          output_format: "PNG"
-          output_dir: "./converted_images"
-          quality: 95
-        conditions:
-          - is_image
-
-  crop_faces:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-    actions:
-      - name: crop_faces
-        file: crop_faces_action.py
-        params:
-          output_dir: "./cropped_faces"
-          detector_backend: "retinaface"
-          padding_factor: 0.3
-          max_size: 2048
-        conditions:
-          - is_image
-
-
-  find_duplicates:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-            - ".webp"
-            - ".gif"
-    actions:
-      - name: find_duplicate_images
-        file: find_duplicate_images_action.py
-        params:
-          output_dir: "./duplicate_images"
-          hash_size: 8
-          similarity_threshold: 5
-        conditions:
-          - is_image
-
-  remove_small_images:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-      - name: is_small_image
-        file: is_small_image.py
-        params:
-          min_width: 400
-          min_height: 400
-    actions:
-      - name: remove_file
-        file: remove_action.py
-        params:
-          dry_run: false  # Set to false when you're ready to actually delete files
-          log_dir: "./removal_logs"
-        conditions:
-          - is_image
-          - is_small_image
-
-  find_and_remove_duplicates:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-    actions:
-      - name: find_and_remove_duplicates
-        file: find_and_remove_duplicates_action.py
-        params:
-          hash_size: 8
-          similarity_threshold: 5
-          dry_run: false  # Set to false when you're ready to actually delete files
-        conditions:
-          - is_image
-  remove_unsimilar_faces:
-    rules:
-      - name: is_image
-        file: is_image.py
-        params:
-          allowed_formats:
-            - ".jpg"
-            - ".jpeg"
-            - ".png"
-      - name: similarity_check
-        file: similarity_rule.py
-        params:
-          negate: true
           threshold: 0.7
           model_name: "VGG-Face"
           distance_metric: "cosine"
           reference_img_path: "./ref_image.jpeg"
-    actions:
-      - name: remove_file
-        file: remove_action.py
+          negate: False
+      - plugin: image/is_image
+        name: isimage
         params:
-          dry_run: false  # Set to false when you're ready to actually delete files
-          log_dir: "./removal_logs"
+          allowed_formats:
+            - ".jpg"
+            - ".jpeg"
+            - ".png"
+    actions:
+      - plugin: io/move
+        name: move_images
+        params:
+          target_dir: "./moved_images"
+          dry_run: false  # Set to true for testing without actually moving files
         conditions:
           - is_image
-          - similarity_check
+      - plugin: stablediffusion/sdxl_image_generation_action
+        name: generate_image
+        params:
+          prompt: "A cinematic shot of a baby racoon wearing an intricate italian priest robe."
+          model_id: "stabilityai/sdxl-turbo"
+          output_dir: "./moved_images_new"
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          height: 512
+          width: 512
+        conditions: [
+          similarity_rule
+        ]  # No conditions; action will always run
+      - plugin: stablediffusion/stable_diffusion_image_generation_action
+        name: generate_image2
+        params:
+          model_id: "runwayml/sahneboy"
+          prompt: " a boy with a red hat"
+          negative_prompt: "noisy, low quality"
+          output_dir: "./generated_images_2"
+          guidance_scale: 7.5
+          num_inference_steps: 50
+          height: 512
+          width: 512
+          seed: -1
+          batch_size: 5
+          use_attention_slicing: True
+          use_vae_slicing: False
+        conditions: [
+          isimage
+          similarity_rule
+          vision_language_rule
+        ]  # No conditions; action will always run
+  deepfake_process:
+    rules:
+      - name: similarity_rule
+        plugin: deepfakePlugin/similarity_rule
+        params:
+          threshold: 0.7
+          model_name: "VGG-Face"
+          distance_metric: "cosine"
+          reference_img_path: "./ref_image.jpeg"
+          negate: False
 
+    actions:
+      - plugin: io/move
+        params:
+          target_dir: "./moved_imagesss"
+          dry_run: false  # Set to true for testing without actually moving files
+        conditions:
+          - similarity_rule
 
+  stable_diffusion_process:
+    rules: [ ]  # No rules are required for this process
+    actions:
+      - plugin: stablediffusion/stable_diffusion_image_generation_action
+        params:
+          model_id: "runwayml/stable-diffusion-v1-5"
+          prompt: "a futuristic cityscape at sunset with flying cars"
+          negative_prompt: "noisy, low quality"
+          output_dir: "./generated_images"
+          guidance_scale: 7.5
+          num_inference_steps: 50
+          height: 512
+          width: 512
+          seed: -1
+          batch_size: 5
+          use_attention_slicing: True
+          use_vae_slicing: False
+        conditions: [ ]  # No conditions; action will always run
+
+  xl:
+    rules: [ ]  # No rules are required for this process
+    actions:
+      - plugin: stablediffusion/sdxl_image_generation_action
+        params:
+          prompt: "A cinematic shot of a baby racoon wearing an intricate italian priest robe."
+          model_id: "stabilityai/sdxl-turbo"
+          output_dir: "./generated_images_sdxl"
+          num_inference_steps: 1
+          guidance_scale: 0.0
+          height: 512
+          width: 512
+        conditions: []  # No conditions; action will always run
+
+  vision_language_process:
+    rules:
+      - name: vision_language_rule
+        plugin: moondream2/vision_language_rule
+        params:
+          model_id: "vikhyatk/moondream2"
+          revision: "2024-05-20"
+          question: "What is the color of the object?"
+          expected_answer: "red"
+
+    actions:
+      - name: copy_if_red
+        plugin: io/copy
+        params:
+          target_dir: "./red_objects"
+          dry_run: false
+        conditions:
+          - vision_language_rule
+
+  caption_process:
+    rules:
+      - name: florence_caption_rule
+        plugin: florencePlugin/florence_caption_rule
+        params:
+          prompt: "Describe this image."
+
+    actions:
+      - name: copy_images_with_caption
+        plugin: io/copy
+        params:
+          target_dir: "./captioned_images"
+          dry_run: false
+        conditions:
+          - florence_caption_rule
+
+  blur_faces_process:
+    actions:
+      - plugin: deepfakePlugin/blur_faces_action
+        params:
+          blur_factor: 15
+          output_dir: "./blurred_faces"

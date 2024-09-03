@@ -29,9 +29,8 @@ class Rule(Plugin):
 
 class Action(Plugin):
     @abstractmethod
-    def execute(self, filepath: str, metadata: Dict[str, Any]) -> str:
+    def execute(self, filepaths: List[str], metadata: Dict[str, Any]) -> List[str]:
         pass
-
 
 class PluginLoader:
     @staticmethod
@@ -62,18 +61,19 @@ class Process:
                 results[rule_name] = False
         return results
 
-    def execute(self, filepath: str, metadata: Dict[str, Any], rule_results: Dict[str, bool]) -> str:
-        current_filepath = filepath
+    def execute(self, filepaths: List[str], metadata: Dict[str, Any], rule_results: Dict[str, bool]) -> List[str]:
+        current_filepaths = filepaths
         for action in self.actions:
             conditions = action['config'].get('conditions', [])
             if all(rule_results.get(condition, False) for condition in conditions):
                 try:
-                    current_filepath = action['instance'].execute(current_filepath, metadata)
+                    current_filepaths = action['instance'].execute(current_filepaths, metadata)
+                    log_message(f"Executed action {action['config']['name']} on {current_filepaths}")
                 except Exception as e:
-                    log_message(f"Error executing action {action['config']['name']} on {current_filepath}: {str(e)}")
+                    raise RuntimeError(f"Error executing action {action['config']['name']}: {str(e)}") from e
             else:
-                log_message(f"Skipped action {action['config']['name']} for {current_filepath} due to unmet conditions")
-        return current_filepath
+                log_message(f"Skipped action {action['config']['name']} due to unmet conditions: {conditions}")
+        return current_filepaths
 
 class ImageProcessor:
     def __init__(self, config: Dict[str, Any]):
@@ -100,17 +100,23 @@ class ImageProcessor:
         rules = []
         actions = []
 
-        for rule_config in process_config['rules']:
-            rule_path = os.path.join(plugin_dir, 'rules', rule_config['file'])
-            rule = PluginLoader.load_plugin(rule_path, Rule)
-            rule.initialize(rule_config.get('params', {}))
-            rules.append({'instance': rule, 'config': rule_config})
+        if 'rules' in process_config:
+            for rule_config in process_config['rules']:
+                rule_name = rule_config['plugin'].split("/")[-1].split(".")[0]
+                rule_config['name'] = rule_config.get('name', rule_name)
+                rule_path = os.path.abspath(os.path.join(plugin_dir, rule_config['plugin'].split('/')[0], 'rules', *rule_config['plugin'].split('/')[1:]) + ".py")
+                rule = PluginLoader.load_plugin(rule_path, Rule)
+                rule.initialize(rule_config.get('params', {}))
+                rules.append({'instance': rule, 'config': rule_config})
 
-        for action_config in process_config['actions']:
-            action_path = os.path.join(plugin_dir, 'actions', action_config['file'])
-            action = PluginLoader.load_plugin(action_path, Action)
-            action.initialize(action_config.get('params', {}))
-            actions.append({'instance': action, 'config': action_config})
+        if 'actions' in process_config:
+            for action_config in process_config['actions']:
+                action_name = action_config['plugin'].split("/")[-1].split(".")[0]
+                action_config['name'] = action_config.get('name', action_name)
+                action_path = os.path.abspath(os.path.join(plugin_dir, action_config['plugin'].split('/')[0], 'actions', *action_config['plugin'].split('/')[1:]) + ".py")
+                action = PluginLoader.load_plugin(action_path, Action)
+                action.initialize(action_config.get('params', {}))
+                actions.append({'instance': action, 'config': action_config})
 
         self.processes[process_name] = Process(process_name, rules, actions)
 
@@ -135,7 +141,7 @@ class ImageProcessor:
                         rule_results = process.apply(filepath, metadata)
                         log_message(f"Rule results for {filepath}: {rule_results}")
                         if any(rule_results.values()):
-                            filepath = process.execute(filepath, metadata, rule_results)
+                            filepath = process.execute([filepath], metadata, rule_results)[0]
                             self.logger.info(f"Applied process '{process_name}' to {filepath}")
                             log_message(f"Applied process '{process_name}' to {filepath}")
                         else:
@@ -144,8 +150,8 @@ class ImageProcessor:
                     error_message = f"Error processing {filepath}: {str(e)}"
                     self.logger.error(error_message)
                     log_message(error_message)
-                    if self.config['general']['stop_on_error']:
-                        raise
+                    if self.config['general'].get('stop_on_error', False):
+                        raise RuntimeError("Critical error occurred. Stopping the process.") from e
                 finally:
                     pbar.update(1)
 

@@ -2,7 +2,5 @@ Pillow
 PyYAML
 opencv-python
 numpy
-deepface
 imagehash
 tqdm
-tensorflow[and-cuda]==2.16.2
